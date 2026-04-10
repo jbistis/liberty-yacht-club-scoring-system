@@ -41,6 +41,47 @@ A self-contained HTML/CSS/JavaScript file embedded in a Wix HTML iframe on the R
 
 ---
 
+## Installing sheet-table.html in Wix
+
+The HTML file is embedded as a **Wix HTML iframe** element on the Racing page (`libertyyachtclub.org/racing`).
+
+### First-time installation
+1. Open the **Wix Editor** for the Racing page
+2. Click **Add Elements (+)** on the left sidebar
+3. Go to **Embed & Social → HTML iframe**
+4. Drag it onto the page below the Race Records section
+5. Click the iframe element → **"Enter Code"**
+6. Paste the entire contents of `sheet-table.html` into the code box
+7. Click **"Update"**
+8. Resize the iframe to full width and approximately **900–1000px tall**
+9. Click **"Publish"** to push changes live
+
+### Updating the HTML (e.g. new season URL)
+1. Open the **Wix Editor** for the Racing page
+2. Click on the existing HTML iframe element
+3. Click **"Enter Code"**
+4. Replace the existing code with the updated `sheet-table.html` contents
+5. Click **"Update"** then **"Publish"**
+
+### Updating the SEASONS config only
+If you only need to add a new season URL, find this block near the top of the script section in `sheet-table.html` and update it:
+
+```javascript
+const SEASONS = {
+  2026: 'https://script.google.com/macros/s/YOUR_2026_URL/exec',
+  2025: 'https://script.google.com/macros/s/YOUR_2025_URL/exec',
+};
+const DEFAULT_YEAR = 2026; // ← update this each new season
+```
+
+### Important notes
+- The Wix HTML iframe has a size limit — keep the HTML file lean and self-contained
+- The Apps Script deployment must be set to **"Anyone"** access or the iframe will fail to fetch data
+- The **"Anyone with the link - Viewer"** setting on the Google Sheet must remain enabled
+- Do **not** use the Wix mobile editor to resize the iframe — always use the desktop editor
+
+---
+
 ## Season Setup Checklist (each new year)
 
 1. **Copy** the previous year's Google Sheet into the LYC Google Drive
