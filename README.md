@@ -45,12 +45,12 @@ At the end of each race, do the following in the Google Sheet:
    - **D** Class
    - **E** Course
    - **F–G** Start Date / Start Time
-   - **H** StartDateTime *(auto-computed from F + G)*
+   - **H** StartDateTime *(auto-computed from F + G)* `=IF(AND(F2<>"",G2<>""),F2+G2,"")`
    - **I** Wind
    - **J** Tide
    - **K** BoatName
    - **L–M** Finish Date / Finish Time
-   - **N** FinishDateTime *(auto-computed from L + M — leave blank)*
+   - **N** FinishDateTime *(auto-computed from L + M — leave blank)* `=IF(AND(L2<>"",M2<>""),L2+M2,"")`
    - **O** Status *(leave blank for a clean finish, otherwise enter a code: OCS, DNF, RET, DNC, DSQ, DNE, TLE, BYE, etc.)*
 3. Run the **⛵ Racing Scoring** menu → **Calculate All Results**.
 4. Verify the **Calculated Results**, **Series Standings**, **Season Standings**, and **Cumulative Results** tabs updated correctly.
