@@ -31,6 +31,32 @@ Each season has its own Google Sheet (owned by info@libertyyachtclub.org) with a
 
 To recalculate results, open the Google Sheet and use the **⛵ Racing Scoring** menu → **Calculate All Results**.
 
+---
+
+## End-of-Race Workflow
+
+At the end of each race, do the following in the Google Sheet:
+
+1. Open the **Race Results Entry** tab.
+2. Fill in one row per boat with race data in **columns A through M, and column O**:
+   - **A** Race#
+   - **B** Series
+   - **C** RaceType
+   - **D** Class
+   - **E** Course
+   - **F–G** Start Date / Start Time
+   - **H** StartDateTime *(auto-computed from F + G)*
+   - **I** Wind
+   - **J** Tide
+   - **K** BoatName
+   - **L–M** Finish Date / Finish Time
+   - **N** FinishDateTime *(auto-computed from L + M — leave blank)*
+   - **O** Status *(leave blank for a clean finish, otherwise enter a code: OCS, DNF, RET, DNC, DSQ, DNE, TLE, BYE, etc.)*
+3. Run the **⛵ Racing Scoring** menu → **Calculate All Results**.
+4. Verify the **Calculated Results**, **Series Standings**, **Season Standings**, and **Cumulative Results** tabs updated correctly.
+
+The Wix display page will reflect the new data on the next page load (data is fetched live from the Apps Script proxy).
+
 ### HTML Display (`sheet-table.html`)
 A self-contained HTML/CSS/JavaScript file embedded in a Wix HTML iframe on the Racing Results page. It:
 - Fetches data from the deployed Apps Script proxy URL
