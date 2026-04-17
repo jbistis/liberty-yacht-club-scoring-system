@@ -603,6 +603,47 @@ function SUNSET(date) {
 }
 
 /**
+ * Restore formulas in Race Results Entry sheet
+ *
+ * Run this after clearing the sheet for a new season, or any time the
+ * formulas in columns H, N, P, Q are accidentally deleted.
+ *
+ * Column formulas (applied to every data row from row 2 downward):
+ *   H = StartDateTime  : =IF(AND(F<>"",G<>""),F+G,"")
+ *   N = FinishDateTime : =IF(AND(L<>"",M<>""),L+M,"")
+ *   P = Sunset         : =SUNSET(F)
+ *   Q = Mins after sunset : =IF(N="","",IF(O<>"","",ROUND((MOD(N,1)-SUNSET(F))*1440,0)))
+ *
+ * Formulas are written to rows 2 through MAX_ROWS.
+ * Adjust MAX_ROWS if you expect more than 500 entries in a season.
+ */
+function restoreEntryFormulas() {
+  const MAX_ROWS = 500;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.RACE_ENTRY);
+
+  const colH = [], colN = [], colP = [], colQ = [];
+
+  for (let row = 2; row <= MAX_ROWS + 1; row++) {
+    colH.push([`=IF(AND(F${row}<>"",G${row}<>""),F${row}+G${row},"")`]);
+    colN.push([`=IF(AND(L${row}<>"",M${row}<>""),L${row}+M${row},"")`]);
+    colP.push([`=SUNSET(F${row})`]);
+    colQ.push([`=IF(N${row}="","",IF(O${row}<>"","",ROUND((MOD(N${row},1)-SUNSET(F${row}))*1440,0)))`]);
+  }
+
+  sheet.getRange(2, 8,  MAX_ROWS, 1).setFormulas(colH);  // Col H
+  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // Col N
+  sheet.getRange(2, 16, MAX_ROWS, 1).setFormulas(colP);  // Col P
+  sheet.getRange(2, 17, MAX_ROWS, 1).setFormulas(colQ);  // Col Q
+
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    'Formulas restored in columns H, N, P, Q (rows 2–' + (MAX_ROWS + 1) + ')',
+    'Done', 4
+  );
+  Logger.log('restoreEntryFormulas complete.');
+}
+
+/**
  * Create menu in Google Sheets
  */
 function onOpen() {
@@ -614,6 +655,8 @@ function onOpen() {
     .addItem('Calculate Series Standings', 'calculateSeriesStandings')
     .addItem('Calculate Season Standings', 'calculateSeasonStandings')
     .addItem('Calculate Cumulative Results', 'calculateCumulativeResults')
+    .addSeparator()
+    .addItem('Restore Entry Sheet Formulas', 'restoreEntryFormulas')
     .addToUi();
 }
 
