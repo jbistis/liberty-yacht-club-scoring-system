@@ -249,10 +249,11 @@ const DEFAULT_YEAR = 2026; // ← update this each new season
 // ─────────────────────────────────────────────
 
 const TABS = ['Calculated Results','Series Standings','Season Standings','Cumulative Results','Scratch Sheet'];
+const TAB_LABELS = {'Calculated Results':'Results'};
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const SPECIAL = ['Cumulative Results','Series Standings','Season Standings'];
 
-let allRows = [], headers = [], displayHeaders = [], colOrder = [], sortCol = -1, sortDir = 1, activeTab = TABS[0];
+let allRows = [], headers = [], displayHeaders = [], colOrder = [], sortCol = -1, sortDir = 1, activeTab = 'Scratch Sheet';
 let activeSeason = DEFAULT_YEAR;
 let PROXY_URL = SEASONS[DEFAULT_YEAR];
 
@@ -489,7 +490,7 @@ function buildTabs() {
   TABS.forEach(name=>{
     const btn=document.createElement('button');
     btn.className='tab-btn'+(name===activeTab?' active':'');
-    btn.textContent=name;
+    btn.textContent=TAB_LABELS[name]||name;
     btn.addEventListener('click',()=>{
       if(name===activeTab)return;
       activeTab=name;
@@ -539,6 +540,13 @@ async function loadTab(tabName) {
       const prefixIndices = preferred.map(p => headers.findIndex(h => h.toLowerCase() === p.toLowerCase())).filter(i => i >= 0);
       const restIndices = headers.map((_,i) => i).filter(i => !prefixIndices.includes(i) && !hidden.includes((headers[i]||'').toLowerCase()));
       colOrder = [...prefixIndices, ...restIndices];
+    }
+    const bowPos = colOrder.findIndex(i => /bow/i.test(headers[i]||''));
+    const classPos = colOrder.findIndex(i => String(headers[i]||'').toLowerCase() === 'class');
+    if (bowPos >= 0 && classPos >= 0) {
+      const [bowIdx] = colOrder.splice(bowPos, 1);
+      const newClassPos = colOrder.findIndex(i => String(headers[i]||'').toLowerCase() === 'class');
+      colOrder.splice(newClassPos + 1, 0, bowIdx);
     }
     document.getElementById('loading').style.display='none';
     document.getElementById('app').style.display='block';
@@ -609,7 +617,7 @@ function buildSeasonPicker() {
       if (year === activeSeason) return;
       activeSeason = year;
       PROXY_URL = SEASONS[year];
-      activeTab = TABS[0];
+      activeTab = 'Scratch Sheet';
       document.querySelectorAll('.season-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       updateSubtitle();
