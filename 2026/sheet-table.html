@@ -535,8 +535,8 @@ async function loadTab(tabName) {
       colOrder = [...prefixIndices, ...restIndices];
     }
     if (tabName === 'Race Results Entry') {
-      const hidden = ['startdate','starttime','finish date','finishtime'];
-      const preferred = ['Race#','Class','Course','BoatName','StartDateTime','FinishDateTime','Status','Wind','Tide','Series','RaceType'];
+      const hidden = ['startdate','starttime','finish date','finishtime','sunset time','after sunset (min)'];
+      const preferred = ['Race#','Series','RaceType','Course','BoatName','Class','StartDateTime','FinishDateTime','Status','Wind','Tide'];
       const prefixIndices = preferred.map(p => headers.findIndex(h => h.toLowerCase() === p.toLowerCase())).filter(i => i >= 0);
       const restIndices = headers.map((_,i) => i).filter(i => !prefixIndices.includes(i) && !hidden.includes((headers[i]||'').toLowerCase()));
       colOrder = [...prefixIndices, ...restIndices];

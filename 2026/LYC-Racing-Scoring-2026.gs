@@ -69,14 +69,14 @@ function calculateRaceResults() {
     const raceNum    = row[0];
     const series     = row[1];
     const raceType   = row[2];
-    const classNum   = row[3];
-    const course     = row[4];
-    const startTime  = row[7];   // StartDateTime (col H)
-    const wind       = row[8];
-    const tide       = row[9];
-    const boatName   = row[10];  // BoatName (col K)
-    const finishTime = row[13];  // FinishDateTime (col N)
-    const status     = row[14];  // Status (col O)
+    const course     = row[3];   // Course (col D)
+    const boatName   = row[4];   // BoatName (col E)
+    const classNum   = row[5];   // Class (col F - VLOOKUP from Scratch Sheet)
+    const startTime  = row[8];   // StartDateTime (col I)
+    const wind       = row[15];  // Wind (col P)
+    const tide       = row[16];  // Tide (col Q)
+    const finishTime = row[11];  // FinishDateTime (col L)
+    const status     = row[12];  // Status (col M)
     
     if (!boatName) continue;
     
@@ -603,41 +603,92 @@ function SUNSET(date) {
 }
 
 /**
- * Restore formulas in Race Results Entry sheet
+ * Restore formulas, VLOOKUP, and dropdowns in Race Results Entry sheet
  *
- * Run this after clearing the sheet for a new season, or any time the
- * formulas in columns H, N, P, Q are accidentally deleted.
+ * Run this after clearing the sheet for a new season, or any time
+ * formulas or dropdowns are accidentally deleted.
  *
- * Column formulas (applied to every data row from row 2 downward):
- *   H = StartDateTime  : =IF(AND(F<>"",G<>""),F+G,"")
- *   N = FinishDateTime : =IF(AND(L<>"",M<>""),L+M,"")
- *   P = Sunset         : =SUNSET(F)
- *   Q = Mins after sunset : =IF(N="","",IF(O<>"","",ROUND((MOD(N,1)-SUNSET(F))*1440,0)))
+ * Column layout:
+ *   A = Race#      B = Series      C = RaceType    D = Course
+ *   E = BoatName   F = Class*      G = StartDate   H = StartTime
+ *   I = StartDateTime*  J = Finish Date  K = FinishTime  L = FinishDateTime*
+ *   M = Status     N = Sunset Time*  O = After Sunset*  P = Wind  Q = Tide
+ *   (* = formula or VLOOKUP, restored by this function)
  *
- * Formulas are written to rows 2 through MAX_ROWS.
- * Adjust MAX_ROWS if you expect more than 500 entries in a season.
+ * Dropdowns restored:
+ *   A = Race# (1-17)
+ *   B = Series (1, 2, 3)
+ *   C = RaceType (Fleet, Practice Fleet, Pursuit)
+ *   D = Course (ALPHA through QUEBEC)
+ *   E = BoatName (from Scratch Sheet col A)
+ *   M = Status (DNC, DNF, RET, TLE, DSQ, DNE, OCS, BYE)
  */
 function restoreEntryFormulas() {
   const MAX_ROWS = 500;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.RACE_ENTRY);
+  const scratchSheet = ss.getSheetByName(SHEETS.SCRATCH_SHEET);
+  const rule = SpreadsheetApp.newDataValidation;
 
-  const colH = [], colN = [], colP = [], colQ = [];
-
+  // ── FORMULAS ────────────────────────────────────────────────────────────────
+  const colF = [], colI = [], colL = [], colN = [], colO = [];
   for (let row = 2; row <= MAX_ROWS + 1; row++) {
-    colH.push([`=IF(AND(F${row}<>"",G${row}<>""),F${row}+G${row},"")`]);
-    colN.push([`=IF(AND(L${row}<>"",M${row}<>""),L${row}+M${row},"")`]);
-    colP.push([`=SUNSET(F${row})`]);
-    colQ.push([`=IF(N${row}="","",IF(O${row}<>"","",ROUND((MOD(N${row},1)-SUNSET(F${row}))*1440,0)))`]);
+    colF.push([`=IFERROR(VLOOKUP(E${row},'Scratch Sheet'!A:J,10,FALSE),"")`]); // Class from col J
+    colI.push([`=IF(AND(G${row}<>"",H${row}<>""),G${row}+H${row},"")`]);
+    colL.push([`=IF(AND(J${row}<>"",K${row}<>""),J${row}+K${row},"")`]);
+    colN.push([`=SUNSET(G${row})`]);
+    colO.push([`=IF(L${row}="","",IF(M${row}<>"","",ROUND((MOD(L${row},1)-SUNSET(G${row}))*1440,0)))`]);
   }
+  sheet.getRange(2, 6,  MAX_ROWS, 1).setFormulas(colF);  // F = Class (VLOOKUP)
+  sheet.getRange(2, 9,  MAX_ROWS, 1).setFormulas(colI);  // I = StartDateTime
+  sheet.getRange(2, 12, MAX_ROWS, 1).setFormulas(colL);  // L = FinishDateTime
+  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // N = Sunset Time
+  sheet.getRange(2, 15, MAX_ROWS, 1).setFormulas(colO);  // O = After Sunset
 
-  sheet.getRange(2, 8,  MAX_ROWS, 1).setFormulas(colH);  // Col H
-  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // Col N
-  sheet.getRange(2, 16, MAX_ROWS, 1).setFormulas(colP);  // Col P
-  sheet.getRange(2, 17, MAX_ROWS, 1).setFormulas(colQ);  // Col Q
+  // ── DROPDOWNS ───────────────────────────────────────────────────────────────
+
+  // Col A: Race# (1-17)
+  const raceNums = Array.from({length: 17}, (_, i) => String(i + 1));
+  sheet.getRange(2, 1, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(raceNums, true).setAllowInvalid(false).build()
+  );
+
+  // Col B: Series
+  sheet.getRange(2, 2, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(['1', '2', '3'], true).setAllowInvalid(false).build()
+  );
+
+  // Col C: RaceType
+  sheet.getRange(2, 3, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(['Fleet', 'Practice Fleet', 'Pursuit'], true).setAllowInvalid(false).build()
+  );
+
+  // Col D: Course
+  const courses = [
+    'ALPHA','BRAVO','CHARLIE','DELTA','ECHO',
+    'FOXTROT','GOLF','HOTEL','INDIA','JULIET',
+    'KILO','LIMA','MIKE','NOVEMBER','OSCAR',
+    'PAPA','QUEBEC'
+  ];
+  sheet.getRange(2, 4, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(courses, true).setAllowInvalid(false).build()
+  );
+
+  // Col E: BoatName (dynamic from Scratch Sheet col A, rows 2 onward)
+  const lastBoatRow = scratchSheet.getLastRow();
+  const boatRange = scratchSheet.getRange(2, 1, lastBoatRow - 1, 1);
+  sheet.getRange(2, 5, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInRange(boatRange, true).setAllowInvalid(false).build()
+  );
+
+  // Col M: Status
+  const statuses = ['DNC', 'DNF', 'RET', 'TLE', 'DSQ', 'DNE', 'OCS', 'BYE'];
+  sheet.getRange(2, 13, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(statuses, true).setAllowInvalid(false).build()
+  );
 
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    'Formulas restored in columns H, N, P, Q (rows 2–' + (MAX_ROWS + 1) + ')',
+    'Formulas and dropdowns restored in Race Results Entry',
     'Done', 4
   );
   Logger.log('restoreEntryFormulas complete.');
