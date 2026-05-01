@@ -667,6 +667,42 @@ function restoreEntryFormulas() {
 }
 
 /**
+ * Create Sunset lookup tab
+ * Creates a simple tab where you can enter a date and see sunset time.
+ * If the tab already exists it just navigates to it.
+ */
+function createSunsetTab() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Sunset');
+
+  if (!sheet) {
+    sheet = ss.insertSheet('Sunset');
+    // Headers
+    sheet.getRange('A1').setValue('Date').setFontWeight('bold');
+    sheet.getRange('B1').setValue('Sunset Time').setFontWeight('bold');
+    sheet.getRange('A1:B1').setBackground('#4a86e8').setFontColor('white');
+
+    // Default to today's date
+    sheet.getRange('A2').setValue(new Date()).setNumberFormat('MM/DD/YYYY');
+    sheet.getRange('B2').setFormula('=SUNSET(A2)').setNumberFormat('h:mm AM/PM');
+
+    // Instructions
+    sheet.getRange('A4').setValue('Enter any date in A2 to see sunset time for Liberty Landing Marina.');
+    sheet.getRange('A4').setFontColor('#666666').setFontStyle('italic');
+
+    // Column widths
+    sheet.setColumnWidth(1, 140);
+    sheet.setColumnWidth(2, 140);
+
+    ss.toast('Sunset tab created!', 'Done', 3);
+  } else {
+    ss.toast('Sunset tab already exists — navigate to it directly.', 'Note', 3);
+  }
+
+  ss.setActiveSheet(sheet);
+}
+
+/**
  * Create menu in Google Sheets
  */
 function onOpen() {
@@ -680,6 +716,7 @@ function onOpen() {
     .addItem('Calculate Cumulative Results', 'calculateCumulativeResults')
     .addSeparator()
     .addItem('Restore Entry Sheet Formulas', 'restoreEntryFormulas')
+    .addItem('Create Sunset Tab', 'createSunsetTab')
     .addToUi();
 }
 
