@@ -422,6 +422,9 @@ function render() {
     const raceIdx=headers.findIndex(h=>h.toUpperCase()==='RACE#');
     const classIdx=headers.findIndex(h=>h.toUpperCase()==='CLASS' || h.toLowerCase()==='class');
     let lastRace=null, lastClass=null, shadeIdx=0;
+    // Shade colors applied as inline styles for cross-browser compatibility
+    // Windows Chrome/Edge sometimes fails to inherit background from tr CSS classes in iframes
+    const shadeColors = ['#f0f4f8','#f2f8f5','#fdfaf5'];
     for (const row of rows) {
       const tr=document.createElement('tr');
       if (raceTypeIdx>=0&&String(row[raceTypeIdx]||'').startsWith('Practice')) tr.classList.add('practice-row');
@@ -434,6 +437,7 @@ function render() {
       }
       lastRace=currentRace; lastClass=currentClass;
       tr.classList.add('shade-' + shadeIdx);
+      const shadeBg = shadeColors[shadeIdx];
       for (const i of colOrder) {
         const td=document.createElement('td');
         const raw=row[i]||'';
@@ -441,6 +445,7 @@ function render() {
         let display=formatValue(raw);
         if (isTime&&/^\d+$/.test(String(raw).trim())&&parseInt(raw)>60) display=secondsToHMS(parseInt(raw));
         td.textContent=display; td.title=raw;
+        td.style.backgroundColor=shadeBg;
         if (/^\d+(\.\d+)?%?$/.test(String(raw).trim()) || /^-?\d+(\.\d+)?$/.test(String(display).trim())) td.classList.add('num');
         const isStatusCol=(headers[i]||'').toUpperCase()==='STATUS';
         if (isStatusCol && /^(DNC|RET|DNF|TLE|DSQ|DNE|OCS)$/i.test(String(raw).trim())) td.classList.add('status-flag');
