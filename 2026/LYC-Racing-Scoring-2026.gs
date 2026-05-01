@@ -207,9 +207,13 @@ function calculateRaceResults() {
                        'Finish DateTime', 'Elapsed', 'Corrected', 'Place', 'Points', 'Status']);
   
   results.forEach(r => {
+    // DNC boats have no start or finish time — show blank
+    const isDNC = r.status === 'DNC';
     calcSheet.appendRow([
-      r.date, r.raceNum, r.series, r.raceType, r.classNum, r.course, r.boatName, r.sailNumber, r.phrf,
-      r.finishTime, r.elapsedSeconds, r.correctedSeconds, r.place,
+      isDNC ? '' : r.date,
+      r.raceNum, r.series, r.raceType, r.classNum, r.course, r.boatName, r.sailNumber, r.phrf,
+      isDNC ? '' : r.finishTime,
+      r.elapsedSeconds, r.correctedSeconds, r.place,
       r.points !== null && r.points !== undefined ? String(r.points) : '',
       r.status
     ]);
@@ -588,8 +592,8 @@ function SUNSET(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d.getTime())) return '';
 
-  const lat = 40.7178;
-  const lng = -74.0431;
+  const lat = 40.7086443;
+  const lng = -74.0343309;
 
   const rad = Math.PI / 180;
   const deg = 180 / Math.PI;
@@ -597,10 +601,14 @@ function SUNSET(date) {
   const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
   const declination = -23.45 * Math.cos(rad * (360 / 365) * (dayOfYear + 10));
   
-  const cosHourAngle = -Math.tan(lat * rad) * Math.tan(declination * rad);
+  // Corrected hour angle accounts for atmospheric refraction (0.5667°)
+  // and sun's apparent radius (0.2666°) = 0.8333° total correction
+  // This matches timeanddate.com more closely than the simple tangent formula
+  const cosHourAngle = (Math.sin(-0.8333 * rad) - Math.sin(lat * rad) * Math.sin(declination * rad))
+                       / (Math.cos(lat * rad) * Math.cos(declination * rad));
   if (cosHourAngle < -1) return 'No sunset';
   if (cosHourAngle > 1) return 'No sunrise';
-  
+
   const hourAngle = Math.acos(cosHourAngle) * deg;
   const sunsetUTC = 12 + hourAngle / 15 - lng / 15;
   
