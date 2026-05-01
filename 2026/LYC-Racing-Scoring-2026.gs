@@ -61,7 +61,13 @@ function calculateRaceResults() {
   }
   
   // Get race entry data
-  const entryData = entrySheet.getDataRange().getValues();
+  // Filter to only rows with a valid BoatName in col E (index 4)
+  // to avoid processing empty formula rows from restoreEntryFormulas()
+  const allEntryData = entrySheet.getDataRange().getValues();
+  const entryData = [allEntryData[0], ...allEntryData.slice(1).filter(row => {
+    const bn = row[4];
+    return bn && !(bn instanceof Date) && String(bn).trim() !== '';
+  })];
   const results = [];
   
   for (let i = 1; i < entryData.length; i++) {
@@ -91,7 +97,9 @@ function calculateRaceResults() {
     let elapsedSeconds = null;
     let correctedSeconds = null;
     
-    if (finishTime && !status && !isPractice) {
+    // Calculate elapsed/corrected for all races including practice
+    // Practice races still show times but are excluded from standings
+    if (finishTime && !status) {
       elapsedSeconds = calculateElapsedSeconds(startTime, finishTime);
       const tcf = PHRF_TCF_DIVISOR / (PHRF_TCF_BASE + boat.phrf);
       correctedSeconds = Math.round(elapsedSeconds * tcf);
@@ -107,12 +115,16 @@ function calculateRaceResults() {
     });
   }
   
-  // ── PASS 1: Score all non-BYE, non-practice races ──────────────────────────
+  // ── PASS 1: Score all non-BYE races (including practice for place/elapsed display) ──
+  // Practice races get elapsed, corrected, and place calculated for informational
+  // purposes but are excluded from all standings calculations downstream.
+  // Practice and non-practice races are grouped separately so they don't
+  // intermingle when calculating place within a race.
   const raceGroups = {};
   results.forEach(r => {
-    if (r.isPractice) return;
     if (r.status === 'BYE') return; // skip BYEs in pass 1
-    const key = `${r.raceNum}_${r.classNum}`;
+    // Key includes isPractice flag so practice races rank among themselves only
+    const key = `${r.raceNum}_${r.classNum}_${r.isPractice ? 'practice' : 'scored'}`;
     if (!raceGroups[key]) raceGroups[key] = [];
     raceGroups[key].push(r);
   });
@@ -131,7 +143,10 @@ function calculateRaceResults() {
     group.forEach(r => {
       if (r.status) {
         r.place = null;
-        if (r.status === 'DNC' || r.status === 'DSQ' || r.status === 'DNE') {
+        if (r.isPractice) {
+          // Practice races: no points assigned regardless of status
+          r.points = null;
+        } else if (r.status === 'DNC' || r.status === 'DSQ' || r.status === 'DNE') {
           r.points = numStarters + 2;
         } else if (r.status === 'TLE') {
           r.points = numFinishers + 2;
@@ -140,7 +155,7 @@ function calculateRaceResults() {
         }
       } else {
         r.place = place;
-        r.points = place;
+        r.points = r.isPractice ? null : place; // No points for practice races
         place++;
       }
     });
@@ -603,92 +618,41 @@ function SUNSET(date) {
 }
 
 /**
- * Restore formulas, VLOOKUP, and dropdowns in Race Results Entry sheet
+ * Restore formulas in Race Results Entry sheet
  *
- * Run this after clearing the sheet for a new season, or any time
- * formulas or dropdowns are accidentally deleted.
+ * Run this after clearing the sheet for a new season, or any time the
+ * formulas in columns H, N, P, Q are accidentally deleted.
  *
- * Column layout:
- *   A = Race#      B = Series      C = RaceType    D = Course
- *   E = BoatName   F = Class*      G = StartDate   H = StartTime
- *   I = StartDateTime*  J = Finish Date  K = FinishTime  L = FinishDateTime*
- *   M = Status     N = Sunset Time*  O = After Sunset*  P = Wind  Q = Tide
- *   (* = formula or VLOOKUP, restored by this function)
+ * Column formulas (applied to every data row from row 2 downward):
+ *   H = StartDateTime  : =IF(AND(F<>"",G<>""),F+G,"")
+ *   N = FinishDateTime : =IF(AND(L<>"",M<>""),L+M,"")
+ *   P = Sunset         : =SUNSET(F)
+ *   Q = Mins after sunset : =IF(N="","",IF(O<>"","",ROUND((MOD(N,1)-SUNSET(F))*1440,0)))
  *
- * Dropdowns restored:
- *   A = Race# (1-17)
- *   B = Series (1, 2, 3)
- *   C = RaceType (Fleet, Practice Fleet, Pursuit)
- *   D = Course (ALPHA through QUEBEC)
- *   E = BoatName (from Scratch Sheet col A)
- *   M = Status (DNC, DNF, RET, TLE, DSQ, DNE, OCS, BYE)
+ * Formulas are written to rows 2 through MAX_ROWS.
+ * Adjust MAX_ROWS if you expect more than 500 entries in a season.
  */
 function restoreEntryFormulas() {
   const MAX_ROWS = 500;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.RACE_ENTRY);
-  const scratchSheet = ss.getSheetByName(SHEETS.SCRATCH_SHEET);
-  const rule = SpreadsheetApp.newDataValidation;
 
-  // ── FORMULAS ────────────────────────────────────────────────────────────────
-  const colF = [], colI = [], colL = [], colN = [], colO = [];
+  const colH = [], colN = [], colP = [], colQ = [];
+
   for (let row = 2; row <= MAX_ROWS + 1; row++) {
-    colF.push([`=IFERROR(VLOOKUP(E${row},'Scratch Sheet'!A:J,10,FALSE),"")`]); // Class from col J
-    colI.push([`=IF(AND(G${row}<>"",H${row}<>""),G${row}+H${row},"")`]);
-    colL.push([`=IF(AND(J${row}<>"",K${row}<>""),J${row}+K${row},"")`]);
-    colN.push([`=SUNSET(G${row})`]);
-    colO.push([`=IF(L${row}="","",IF(M${row}<>"","",ROUND((MOD(L${row},1)-SUNSET(G${row}))*1440,0)))`]);
+    colH.push([`=IF(AND(F${row}<>"",G${row}<>""),F${row}+G${row},"")`]);
+    colN.push([`=IF(AND(L${row}<>"",M${row}<>""),L${row}+M${row},"")`]);
+    colP.push([`=SUNSET(F${row})`]);
+    colQ.push([`=IF(N${row}="","",IF(O${row}<>"","",ROUND((MOD(N${row},1)-SUNSET(F${row}))*1440,0)))`]);
   }
-  sheet.getRange(2, 6,  MAX_ROWS, 1).setFormulas(colF);  // F = Class (VLOOKUP)
-  sheet.getRange(2, 9,  MAX_ROWS, 1).setFormulas(colI);  // I = StartDateTime
-  sheet.getRange(2, 12, MAX_ROWS, 1).setFormulas(colL);  // L = FinishDateTime
-  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // N = Sunset Time
-  sheet.getRange(2, 15, MAX_ROWS, 1).setFormulas(colO);  // O = After Sunset
 
-  // ── DROPDOWNS ───────────────────────────────────────────────────────────────
-
-  // Col A: Race# (1-17)
-  const raceNums = Array.from({length: 17}, (_, i) => String(i + 1));
-  sheet.getRange(2, 1, MAX_ROWS, 1).setDataValidation(
-    rule().requireValueInList(raceNums, true).setAllowInvalid(false).build()
-  );
-
-  // Col B: Series
-  sheet.getRange(2, 2, MAX_ROWS, 1).setDataValidation(
-    rule().requireValueInList(['1', '2', '3'], true).setAllowInvalid(false).build()
-  );
-
-  // Col C: RaceType
-  sheet.getRange(2, 3, MAX_ROWS, 1).setDataValidation(
-    rule().requireValueInList(['Fleet', 'Practice Fleet', 'Pursuit'], true).setAllowInvalid(false).build()
-  );
-
-  // Col D: Course
-  const courses = [
-    'ALPHA','BRAVO','CHARLIE','DELTA','ECHO',
-    'FOXTROT','GOLF','HOTEL','INDIA','JULIET',
-    'KILO','LIMA','MIKE','NOVEMBER','OSCAR',
-    'PAPA','QUEBEC'
-  ];
-  sheet.getRange(2, 4, MAX_ROWS, 1).setDataValidation(
-    rule().requireValueInList(courses, true).setAllowInvalid(false).build()
-  );
-
-  // Col E: BoatName (dynamic from Scratch Sheet col A, rows 2 onward)
-  const lastBoatRow = scratchSheet.getLastRow();
-  const boatRange = scratchSheet.getRange(2, 1, lastBoatRow - 1, 1);
-  sheet.getRange(2, 5, MAX_ROWS, 1).setDataValidation(
-    rule().requireValueInRange(boatRange, true).setAllowInvalid(false).build()
-  );
-
-  // Col M: Status
-  const statuses = ['DNC', 'DNF', 'RET', 'TLE', 'DSQ', 'DNE', 'OCS', 'BYE'];
-  sheet.getRange(2, 13, MAX_ROWS, 1).setDataValidation(
-    rule().requireValueInList(statuses, true).setAllowInvalid(false).build()
-  );
+  sheet.getRange(2, 8,  MAX_ROWS, 1).setFormulas(colH);  // Col H
+  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // Col N
+  sheet.getRange(2, 16, MAX_ROWS, 1).setFormulas(colP);  // Col P
+  sheet.getRange(2, 17, MAX_ROWS, 1).setFormulas(colQ);  // Col Q
 
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    'Formulas and dropdowns restored in Race Results Entry',
+    'Formulas restored in columns H, N, P, Q (rows 2–' + (MAX_ROWS + 1) + ')',
     'Done', 4
   );
   Logger.log('restoreEntryFormulas complete.');
