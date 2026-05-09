@@ -38,20 +38,22 @@ To recalculate results, open the Google Sheet and use the **⛵ Racing Scoring**
 At the end of each race, do the following in the Google Sheet:
 
 1. Open the **Race Results Entry** tab.
-2. Fill in one row per boat with race data in **columns A through M, and column O**:
+2. Fill in one row per boat. Manually entered columns are A–E, G, H, J, K, M, P, Q. Columns marked *auto* are populated by formulas/VLOOKUPs and should be left alone — `restoreEntryFormulas` reseeds them if they get cleared.
    - **A** Race#
    - **B** Series
    - **C** RaceType
-   - **D** Class
-   - **E** Course
-   - **F–G** Start Date / Start Time
-   - **H** StartDateTime *(auto-computed from F + G)* `=IF(AND(F2<>"",G2<>""),F2+G2,"")`
-   - **I** Wind
-   - **J** Tide
-   - **K** BoatName
-   - **L–M** Finish Date / Finish Time
-   - **N** FinishDateTime *(auto-computed from L + M — leave blank)* `=IF(AND(L2<>"",M2<>""),L2+M2,"")`
-   - **O** Status *(leave blank for a clean finish, otherwise enter a code: OCS, DNF, RET, DNC, DSQ, DNE, TLE, BYE, etc.)*
+   - **D** Course
+   - **E** BoatName
+   - **F** Class — *auto* (VLOOKUP from Scratch Sheet col J keyed on BoatName) `=IFERROR(VLOOKUP(E2,'Scratch Sheet'!A:J,10,FALSE),"")`
+   - **G–H** Start Date / Start Time
+   - **I** StartDateTime — *auto* (G + H) `=IF(AND(G2<>"",H2<>""),G2+H2,"")`
+   - **J–K** Finish Date / Finish Time
+   - **L** FinishDateTime — *auto* (J + K) `=IF(AND(J2<>"",K2<>""),J2+K2,"")`
+   - **M** Status *(leave blank for a clean finish, otherwise enter a status code — see [Status Codes](#status-codes) below)*
+   - **N** Sunset Time — *auto* `=SUNSET(G2)`
+   - **O** Mins after sunset — *auto* `=IF(L2="","",IF(M2<>"","",ROUND((MOD(L2,1)-SUNSET(G2))*1440,0)))`
+   - **P** Wind
+   - **Q** Tide
 3. Run the **⛵ Racing Scoring** menu → **Calculate All Results**.
 4. Verify the **Calculated Results**, **Series Standings**, **Season Standings**, and **Cumulative Results** tabs updated correctly.
 
@@ -131,16 +133,25 @@ Corrected Time = Elapsed Time × TCF
 ```
 
 ### Points
-| Finish | Points |
-|--------|--------|
-| 1st place | 1 |
-| 2nd place | 2 |
-| nth place | n |
-| DNF / RET / OCS | Finishers + 1 |
-| DNC / DSQ / DNE | Starters + 2 |
-| TLE | Finishers + 2 |
-| BYE (2025) | 0 |
-| BYE (2026+) | Average of boat's other races in that series |
+
+A clean finish scores its place: 1st = 1 point, 2nd = 2 points, nth = n points. All other outcomes are recorded with a status code in the **Status** column of *Race Results Entry*. The table below shows what each code does — the points formula, whether it counts toward the boat's race-day participation %, whether the points feed into series and season totals, and whether the race counts toward the boat's race count for throwouts.
+
+### Status Codes
+
+| Code | Meaning | Points awarded | Counts for participation %? | Included in series/season totals? | Counts as a race for throwouts? |
+|------|---------|----------------|-----------------------------|-----------------------------------|---------------------------------|
+| *(blank)* | Clean finish | Place (1, 2, 3…) | Yes | Yes | Yes |
+| OCS | On course side at start | Starters + 1 | Yes | Yes | Yes |
+| DNF | Did not finish | Starters + 1 | Yes | Yes | Yes |
+| RET | Retired | Starters + 1 | Yes | Yes | Yes |
+| DNC | Did not come to the start | Starters + 2 | No | No | No |
+| DSQ | Disqualified | Starters + 2 | Yes | Yes | Yes |
+| DNE | DSQ, non-excludable | Starters + 2 | Yes | Yes | Yes |
+| TLE | Time limit expired | Finishers + 2 | Yes | Yes | Yes |
+| BYE (2025) | Series bye | 0 | Yes | Yes | Yes |
+| BYE (2026+) | Series bye | Average of boat's other races in series | Yes | Yes | Yes |
+
+Practice races (any RaceType beginning with "Practice") show elapsed/corrected times for reference but never receive points and are excluded from all standings.
 
 ### Throwouts
 One throwout for every 7 races sailed.
