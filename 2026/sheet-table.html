@@ -308,7 +308,7 @@ function formatValue(val) {
   const hasTime=d.getHours()||d.getMinutes()||d.getSeconds();
   if (yr<=1900) return hh+':'+mm+':'+ss;
   const yrS=String(yr).slice(-2);
-  return hasTime ? day+'-'+mon+' @ '+hh+':'+mm : day+'-'+mon+'-'+yrS;
+  return hasTime ? day+'-'+mon+' @ '+hh+':'+mm+':'+ss : day+'-'+mon+'-'+yrS;
 }
 
 function parseCSV(text) {
