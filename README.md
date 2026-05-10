@@ -146,10 +146,12 @@ A clean finish scores its place: 1st = 1 point, 2nd = 2 points, nth = n points. 
 | RET | Retired | Starters + 1 | Yes | Yes | Yes |
 | DNC | Did not come to the start | Starters + 2 | No | No | No |
 | DSQ | Disqualified | Starters + 2 | Yes | Yes | Yes |
-| DNE | DSQ, non-excludable | Starters + 2 | Yes | Yes | Yes |
+| DNE | DSQ, non-excludable | Starters + 2 | Yes | Yes | No |
 | TLE | Time limit expired | Finishers + 2 | Yes | Yes | Yes |
 | BYE (2025) | Series bye | 0 | Yes | Yes | Yes |
 | BYE (2026+) | Series bye | Average of boat's other races in series | Yes | Yes | Yes |
+| NSC | Did not sail the course | Starters + 1 (same as DNF) | Yes | Yes | Yes |
+| ABN | Race abandoned, boat was at the line | None — no number recorded | Yes | No | No |
 
 Practice races (any RaceType beginning with "Practice") show elapsed/corrected times for reference but never receive points and are excluded from all standings.
 

@@ -5,8 +5,8 @@ DNF,Did not finish,Starters + 1,Yes,Yes,Yes
 RET,Retired,Starters + 1,Yes,Yes,Yes
 DNC,Did not come to start,Starters + 2,No,No,No
 DSQ,Disqualified,Starters + 2,Yes,Yes,Yes
-DNE,"DSQ, non-excludable",Starters + 2,Yes,Yes,Yes
+DNE,"DSQ, non-excludable",Starters + 2,Yes,Yes,No
 TLE,Time limit expired,Finishers + 2,Yes,Yes,Yes
 BYE,Series bye,Avg of boat's other races in series,Yes,Yes,Yes
-NSC,Not scored (boat raced but RC didn't score),Starters + 1 (same as DNF),Yes,Yes,Yes
+NSC,Did not sail the course,Starters + 1 (same as DNF),Yes,Yes,Yes
 ABN,"Race abandoned, boat was at the line",None — no number recorded,Yes,No,No

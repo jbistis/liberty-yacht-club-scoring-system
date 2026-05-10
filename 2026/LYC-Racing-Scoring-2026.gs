@@ -26,12 +26,12 @@ const PHRF_TCF_BASE = 550;
  */
 function calculateAllResults() {
   Logger.log('Starting calculation...');
-  
+
   calculateRaceResults();
   calculateSeriesStandings();
   calculateSeasonStandings();
   calculateCumulativeResults();
-  
+
   Logger.log('Calculation complete!');
   SpreadsheetApp.getActiveSpreadsheet().toast('Scoring updated successfully!', 'Complete', 3);
 }
@@ -49,7 +49,7 @@ function calculateRaceResults() {
   const entrySheet = ss.getSheetByName(SHEETS.RACE_ENTRY);
   const calcSheet = ss.getSheetByName(SHEETS.CALCULATED);
   const boatSheet = ss.getSheetByName(SHEETS.SCRATCH_SHEET);
-  
+
   // Get scratch sheet data
   const boatData = boatSheet.getDataRange().getValues();
   const boatMap = {};
@@ -59,7 +59,7 @@ function calculateRaceResults() {
     const phrf = boatData[i][7];
     boatMap[boatName] = { sailNumber, phrf };
   }
-  
+
   // Get race entry data
   // Filter to only rows with a valid BoatName in col E (index 4)
   // to avoid processing empty formula rows from restoreEntryFormulas()
@@ -69,7 +69,7 @@ function calculateRaceResults() {
     return bn && !(bn instanceof Date) && String(bn).trim() !== '';
   })];
   const results = [];
-  
+
   for (let i = 1; i < entryData.length; i++) {
     const row = entryData[i];
     const raceNum    = row[0];
@@ -83,20 +83,20 @@ function calculateRaceResults() {
     const tide       = row[16];  // Tide (col Q)
     const finishTime = row[11];  // FinishDateTime (col L)
     const status     = row[12];  // Status (col M)
-    
+
     if (!boatName) continue;
-    
+
     const boat = boatMap[boatName];
     if (!boat) {
       Logger.log(`Warning: Boat "${boatName}" not found in scratch sheet`);
       continue;
     }
-    
+
     const isPractice = String(raceType).startsWith('Practice');
-    
+
     let elapsedSeconds = null;
     let correctedSeconds = null;
-    
+
     // Calculate elapsed/corrected for all races including practice
     // Practice races still show times but are excluded from standings
     if (finishTime && !status) {
@@ -104,7 +104,7 @@ function calculateRaceResults() {
       const tcf = PHRF_TCF_DIVISOR / (PHRF_TCF_BASE + boat.phrf);
       correctedSeconds = Math.round(elapsedSeconds * tcf);
     }
-    
+
     results.push({
       date: startTime instanceof Date ? startTime : new Date(startTime),
       raceNum, series, raceType, classNum, course, boatName,
@@ -114,7 +114,7 @@ function calculateRaceResults() {
       place: null, points: null
     });
   }
-  
+
   // ── PASS 1: Score all non-BYE races (including practice for place/elapsed display) ──
   // Practice races get elapsed, corrected, and place calculated for informational
   // purposes but are excluded from all standings calculations downstream.
@@ -128,14 +128,14 @@ function calculateRaceResults() {
     if (!raceGroups[key]) raceGroups[key] = [];
     raceGroups[key].push(r);
   });
-  
+
   Object.values(raceGroups).forEach(group => {
     group.sort((a, b) => {
       if (a.correctedSeconds === null) return 1;
       if (b.correctedSeconds === null) return -1;
       return a.correctedSeconds - b.correctedSeconds;
     });
-    
+
     const numStarters = group.filter(r => r.status !== 'DNC').length;
     let place = 1;
     const numFinishers = group.filter(r => !r.status).length;
@@ -145,6 +145,11 @@ function calculateRaceResults() {
         r.place = null;
         if (r.isPractice) {
           // Practice races: no points assigned regardless of status
+          r.points = null;
+        } else if (r.status === 'ABN') {
+          // Race abandoned — boat was at the line but no score recorded.
+          // Counts toward participation but excluded from series/season totals
+          // and from the race count for throwouts.
           r.points = null;
         } else if (r.status === 'DNC' || r.status === 'DSQ' || r.status === 'DNE') {
           r.points = numStarters + 2;
@@ -203,9 +208,9 @@ function calculateRaceResults() {
   //               G=Boat Name, H=Sail#, I=PHRF, J=Finish DateTime, K=Elapsed,
   //               L=Corrected, M=Place, N=Points, O=Status
   calcSheet.clear();
-  calcSheet.appendRow(['Start DateTime', 'Race#', 'Series', 'RaceType', 'Class', 'Course', 'Boat Name', 'Sail#', 'PHRF', 
+  calcSheet.appendRow(['Start DateTime', 'Race#', 'Series', 'RaceType', 'Class', 'Course', 'Boat Name', 'Sail#', 'PHRF',
                        'Finish DateTime', 'Elapsed', 'Corrected', 'Place', 'Points', 'Status']);
-  
+
   results.forEach(r => {
     // DNC boats have no start or finish time — show blank
     const isDNC = r.status === 'DNC';
@@ -248,9 +253,9 @@ function calculateSeriesStandings() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const calcSheet = ss.getSheetByName(SHEETS.CALCULATED);
   const seriesSheet = ss.getSheetByName(SHEETS.SERIES);
-  
+
   const data = calcSheet.getDataRange().getValues();
-  
+
   const seriesGroups = {};
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -261,55 +266,62 @@ function calculateSeriesStandings() {
     const raceNum  = row[1];
     const points   = Number(row[13]);
     const status   = row[14];
-    
+
     const isPractice = String(raceType).startsWith('Practice');
     if (isPractice) continue;
-    
+    // ABN: race abandoned, no score — excluded from totals and throwout count
+    if (status === 'ABN') continue;
+
     const key = `${series}_${classNum}`;
     if (!seriesGroups[key]) seriesGroups[key] = {};
     if (!seriesGroups[key][boatName]) seriesGroups[key][boatName] = [];
-    
+
     // 2026: BYE is now a scored race (average-based), include it
-    seriesGroups[key][boatName].push({ raceNum, points });
+    seriesGroups[key][boatName].push({ raceNum, points, status });
   }
-  
+
   seriesSheet.clear();
   let currentRow = 1;
-  
+
   Object.keys(seriesGroups).sort().forEach(key => {
     const [series, classNum] = key.split('_');
     const boats = seriesGroups[key];
-    
+
     seriesSheet.getRange(currentRow, 1).setValue(`CLASS ${classNum} - SERIES ${series} SCORES`);
     seriesSheet.getRange(currentRow, 1, 1, 10).setBackground('#ff9900').setFontWeight('bold');
     currentRow++;
-    
+
     seriesSheet.appendRow(['Boat Name', 'Total Points', 'Throwouts', 'Net Score', 'Races']);
     seriesSheet.getRange(currentRow, 1, 1, 5).setBackground('#6d9eeb').setFontWeight('bold');
     currentRow++;
-    
+
     const standings = [];
     Object.keys(boats).forEach(boatName => {
       const races = boats[boatName];
       const numRaces = races.length;
-      const numThrowouts = Math.floor(numRaces / 7);
-      
-      const sortedPoints = races.map(r => r.points).sort((a, b) => b - a);
-      const kept = sortedPoints.slice(numThrowouts);
-      
-      const total = sortedPoints.reduce((sum, p) => sum + p, 0);
-      const score = kept.reduce((sum, p) => sum + p, 0);
-      
-      standings.push({ boatName, total, throwouts: numThrowouts, score, numRaces });
+      const entitledThrowouts = Math.floor(numRaces / 7);
+
+      // DNE scores cannot be discarded — drop only from the non-DNE pool
+      const dneRaces = races.filter(r => r.status === 'DNE');
+      const droppableRaces = races.filter(r => r.status !== 'DNE');
+      const sortedDroppable = droppableRaces.map(r => r.points).sort((a, b) => b - a);
+      const numDropped = Math.min(entitledThrowouts, sortedDroppable.length);
+      const kept = sortedDroppable.slice(numDropped);
+
+      const dneTotal = dneRaces.reduce((sum, r) => sum + r.points, 0);
+      const total = races.reduce((sum, r) => sum + r.points, 0);
+      const score = dneTotal + kept.reduce((sum, p) => sum + p, 0);
+
+      standings.push({ boatName, total, throwouts: numDropped, score, numRaces });
     });
-    
+
     standings.sort((a, b) => a.score - b.score);
-    
+
     standings.forEach(s => {
       seriesSheet.appendRow([s.boatName, s.total, s.throwouts, s.score, s.numRaces]);
       currentRow++;
     });
-    
+
     currentRow += 2;
   });
 }
@@ -325,7 +337,7 @@ function calculateSeasonStandings() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const calcSheet = ss.getSheetByName(SHEETS.CALCULATED);
   const seasonSheet = ss.getSheetByName(SHEETS.SEASON);
-  
+
   const data = calcSheet.getDataRange().getValues();
 
   function toDateKey(val) {
@@ -389,9 +401,9 @@ function calculateSeasonStandings() {
     }
 
     // 2026: BYE is now a scored race — include its points in season standings
-    // Exclude only practice and DNC
-    if (!isPractice && status !== 'DNC') {
-      classGroups[classNum][boatName].push(points);
+    // Exclude practice, DNC, and ABN (ABN: race abandoned, no score recorded)
+    if (!isPractice && status !== 'DNC' && status !== 'ABN') {
+      classGroups[classNum][boatName].push({ points, status });
     }
   }
 
@@ -415,23 +427,29 @@ function calculateSeasonStandings() {
 
     const standings = [];
     Object.keys(boats).forEach(boatName => {
-      const allPoints = boats[boatName];
-      const numRaces = allPoints.length;
-      const numThrowouts = Math.floor(numRaces / 7);
+      const allRaces = boats[boatName];
+      const numRaces = allRaces.length;
+      const entitledThrowouts = Math.floor(numRaces / 7);
 
       const boatKey = `${classNum}_${boatName}`;
       const raceDaysAttended = boatRaceDays[boatKey] ? boatRaceDays[boatKey].size : 0;
       const participationPct = totalRaceDays > 0 ? (raceDaysAttended / totalRaceDays * 100) : 0;
       const isQualified = raceDaysAttended >= requiredDays;
 
-      const sortedPoints = allPoints.sort((a, b) => b - a);
-      const kept = sortedPoints.slice(numThrowouts);
+      // DNE scores cannot be discarded — drop only from the non-DNE pool
+      const dneRaces = allRaces.filter(r => r.status === 'DNE');
+      const droppableRaces = allRaces.filter(r => r.status !== 'DNE');
+      const sortedDroppable = droppableRaces.map(r => r.points).sort((a, b) => b - a);
+      const numDropped = Math.min(entitledThrowouts, sortedDroppable.length);
+      const kept = sortedDroppable.slice(numDropped);
 
-      const total = sortedPoints.reduce((sum, p) => sum + p, 0);
-      const netPoints = kept.reduce((sum, p) => sum + p, 0);
-      const average = kept.length > 0 ? netPoints / kept.length : 0;
+      const dneTotal = dneRaces.reduce((sum, r) => sum + r.points, 0);
+      const total = allRaces.reduce((sum, r) => sum + r.points, 0);
+      const netPoints = dneTotal + kept.reduce((sum, p) => sum + p, 0);
+      const numKept = dneRaces.length + kept.length;
+      const average = numKept > 0 ? netPoints / numKept : 0;
 
-      standings.push({ boatName, numRaces, total, numThrowouts, netPoints, average, isQualified, raceDaysAttended, totalRaceDays, participationPct });
+      standings.push({ boatName, numRaces, total, numThrowouts: numDropped, netPoints, average, isQualified, raceDaysAttended, totalRaceDays, participationPct });
     });
 
     standings.sort((a, b) => a.average - b.average);
@@ -463,18 +481,18 @@ function calculateSeasonStandings() {
 function calculateCumulativeResults() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const calcSheet = ss.getSheetByName(SHEETS.CALCULATED);
-  
+
   let cumSheet = ss.getSheetByName(SHEETS.CUMULATIVE);
   if (!cumSheet) {
     cumSheet = ss.insertSheet(SHEETS.CUMULATIVE);
   }
   cumSheet.clear();
-  
+
   const data = calcSheet.getDataRange().getValues();
 
   const structure = {};
   const seriesRaceNums = {};
-  
+
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const raceNum  = row[1];
@@ -484,51 +502,51 @@ function calculateCumulativeResults() {
     const boatName = row[6];
     const points   = Number(row[13]);
     const status   = row[14];
-    
+
     const isPractice = String(raceType).startsWith('Practice');
     if (isPractice) continue;
     if (!boatName) continue;
-    
+
     if (!structure[series]) structure[series] = {};
     if (!structure[series][classNum]) structure[series][classNum] = {};
     if (!structure[series][classNum][boatName]) structure[series][classNum][boatName] = {};
-    structure[series][classNum][boatName][raceNum] = { 
-      points: typeof points === 'number' ? points : Number(points), 
-      status: status || '' 
+    structure[series][classNum][boatName][raceNum] = {
+      points: typeof points === 'number' ? points : Number(points),
+      status: status || ''
     };
-    
+
     if (!seriesRaceNums[series]) seriesRaceNums[series] = new Set();
     seriesRaceNums[series].add(raceNum);
   }
-  
+
   let currentRow = 1;
-  
+
   Object.keys(structure).sort((a, b) => Number(a) - Number(b)).forEach(series => {
     const classes = structure[series];
     const raceNums = Array.from(seriesRaceNums[series]).sort((a, b) => Number(a) - Number(b));
     const numRaces = raceNums.length;
-    
+
     const seriesHeaderRange = cumSheet.getRange(currentRow, 1, 1, 4 + numRaces);
     seriesHeaderRange.merge();
     cumSheet.getRange(currentRow, 1).setValue(`SERIES ${series}`);
     seriesHeaderRange.setBackground('#1c4587').setFontColor('white').setFontWeight('bold').setFontSize(12);
     currentRow++;
-    
+
     Object.keys(classes).sort((a, b) => Number(a) - Number(b)).forEach(classNum => {
       const boats = classes[classNum];
-      
+
       const classHeaderRange = cumSheet.getRange(currentRow, 1, 1, 4 + numRaces);
       classHeaderRange.merge();
       cumSheet.getRange(currentRow, 1).setValue(`Class ${classNum}`);
       classHeaderRange.setBackground('#4a86e8').setFontColor('white').setFontWeight('bold');
       currentRow++;
-      
+
       const colHeaders = ['Boat Name', 'Sail#', 'PHRF', 'Total'];
       raceNums.forEach((rn) => colHeaders.push(`R${rn}`));
       cumSheet.appendRow(colHeaders);
       cumSheet.getRange(currentRow, 1, 1, colHeaders.length).setBackground('#6d9eeb').setFontColor('white').setFontWeight('bold');
       currentRow++;
-      
+
       const boatStandings = [];
       Object.keys(boats).forEach(boatName => {
         const raceResults = boats[boatName];
@@ -538,6 +556,9 @@ function calculateCumulativeResults() {
           if (!result) return '';
           const pts = result.points;
           const stat = result.status;
+          // ABN: race abandoned, no score recorded — show only the code,
+          // do not contribute to the boat's total
+          if (stat === 'ABN') return 'ABN';
           total += pts || 0;
           // 2026: BYE shows as "avg/BYE" so it's clear it's an averaged score
           if (stat) return `${pts}/${stat}`;
@@ -545,38 +566,38 @@ function calculateCumulativeResults() {
         });
         boatStandings.push({ boatName, total, raceScores });
       });
-      
+
       boatStandings.sort((a, b) => a.total - b.total);
-      
+
       const boatInfo = {};
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const bn = row[6];
         if (!boatInfo[bn]) {
-          boatInfo[bn] = { 
+          boatInfo[bn] = {
             sailNumber: row[7],
             phrf: row[8]
           };
         }
       }
-      
+
       boatStandings.forEach((s, idx) => {
         const info = boatInfo[s.boatName] || { sailNumber: '', phrf: '' };
         const rowData = [s.boatName, info.sailNumber, info.phrf, s.total, ...s.raceScores];
         cumSheet.appendRow(rowData);
-        
+
         if (idx % 2 === 0) {
           cumSheet.getRange(currentRow, 1, 1, rowData.length).setBackground('#e8f0fe');
         }
         currentRow++;
       });
-      
+
       currentRow++;
     });
-    
+
     currentRow++;
   });
-  
+
   cumSheet.getRange(1, 3, currentRow, 1).setNumberFormat('0');
   cumSheet.autoResizeColumns(1, 20);
   Logger.log('Cumulative Results calculated.');
@@ -600,7 +621,7 @@ function SUNSET(date) {
 
   const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
   const declination = -23.45 * Math.cos(rad * (360 / 365) * (dayOfYear + 10));
-  
+
   // Corrected hour angle accounts for atmospheric refraction (0.5667°)
   // and sun's apparent radius (0.2666°) = 0.8333° total correction
   // This matches timeanddate.com more closely than the simple tangent formula
@@ -611,58 +632,106 @@ function SUNSET(date) {
 
   const hourAngle = Math.acos(cosHourAngle) * deg;
   const sunsetUTC = 12 + hourAngle / 15 - lng / 15;
-  
+
   const jan = new Date(d.getFullYear(), 0, 1);
   const jul = new Date(d.getFullYear(), 6, 1);
   const stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
   const isDST = d.getTimezoneOffset() < stdOffset;
   const utcOffset = isDST ? -4 : -5;
-  
+
   let localSunset = sunsetUTC + utcOffset;
   if (localSunset < 0) localSunset += 24;
   if (localSunset >= 24) localSunset -= 24;
-  
+
   return localSunset / 24;
 }
 
 /**
- * Restore formulas in Race Results Entry sheet
+ * Restore formulas, VLOOKUP, and dropdowns in Race Results Entry sheet
  *
- * Run this after clearing the sheet for a new season, or any time the
- * formulas in columns H, N, P, Q are accidentally deleted.
+ * Run this after clearing the sheet for a new season, or any time
+ * formulas or dropdowns are accidentally deleted.
  *
- * Column formulas (applied to every data row from row 2 downward):
- *   H = StartDateTime  : =IF(AND(F<>"",G<>""),F+G,"")
- *   N = FinishDateTime : =IF(AND(L<>"",M<>""),L+M,"")
- *   P = Sunset         : =SUNSET(F)
- *   Q = Mins after sunset : =IF(N="","",IF(O<>"","",ROUND((MOD(N,1)-SUNSET(F))*1440,0)))
+ * Column layout:
+ *   A = Race#       B = Series      C = RaceType    D = Course
+ *   E = BoatName    F = Class*      G = StartDate   H = StartTime
+ *   I = StartDateTime*   J = FinishDate    K = FinishTime    L = FinishDateTime*
+ *   M = Status      N = SunsetTime*    O = AfterSunset*    P = Wind   Q = Tide
+ *   (* = formula or VLOOKUP, restored by this function)
  *
- * Formulas are written to rows 2 through MAX_ROWS.
- * Adjust MAX_ROWS if you expect more than 500 entries in a season.
+ * Dropdowns restored:
+ *   A = Race# (1–17)
+ *   B = Series (1, 2, 3)
+ *   C = RaceType (Fleet, Practice Fleet, Pursuit)
+ *   D = Course (ALPHA through QUEBEC)
+ *   E = BoatName (from Scratch Sheet col A)
+ *   M = Status (DNC, DNF, RET, TLE, DSQ, DNE, OCS, BYE, NSC, ABN)
  */
 function restoreEntryFormulas() {
   const MAX_ROWS = 500;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.RACE_ENTRY);
+  const scratchSheet = ss.getSheetByName(SHEETS.SCRATCH_SHEET);
+  const rule = SpreadsheetApp.newDataValidation;
 
-  const colH = [], colN = [], colP = [], colQ = [];
-
+  // ── FORMULAS ────────────────────────────────────────────────────────────────
+  const colF = [], colI = [], colL = [], colN = [], colO = [];
   for (let row = 2; row <= MAX_ROWS + 1; row++) {
-    colH.push([`=IF(AND(F${row}<>"",G${row}<>""),F${row}+G${row},"")`]);
-    colN.push([`=IF(AND(L${row}<>"",M${row}<>""),L${row}+M${row},"")`]);
-    colP.push([`=SUNSET(F${row})`]);
-    colQ.push([`=IF(N${row}="","",IF(O${row}<>"","",ROUND((MOD(N${row},1)-SUNSET(F${row}))*1440,0)))`]);
+    colF.push([`=IFERROR(VLOOKUP(E${row},'Scratch Sheet'!A:J,10,FALSE),"")`]); // Class from col J
+    colI.push([`=IF(AND(G${row}<>"",H${row}<>""),G${row}+H${row},"")`]);
+    colL.push([`=IF(AND(J${row}<>"",K${row}<>""),J${row}+K${row},"")`]);
+    colN.push([`=SUNSET(G${row})`]);
+    colO.push([`=IF(L${row}="","",IF(M${row}<>"","",ROUND((MOD(L${row},1)-SUNSET(G${row}))*1440,0)))`]);
   }
+  sheet.getRange(2, 6,  MAX_ROWS, 1).setFormulas(colF);  // F = Class (VLOOKUP)
+  sheet.getRange(2, 9,  MAX_ROWS, 1).setFormulas(colI);  // I = StartDateTime
+  sheet.getRange(2, 12, MAX_ROWS, 1).setFormulas(colL);  // L = FinishDateTime
+  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // N = SunsetTime
+  sheet.getRange(2, 15, MAX_ROWS, 1).setFormulas(colO);  // O = AfterSunset
 
-  sheet.getRange(2, 8,  MAX_ROWS, 1).setFormulas(colH);  // Col H
-  sheet.getRange(2, 14, MAX_ROWS, 1).setFormulas(colN);  // Col N
-  sheet.getRange(2, 16, MAX_ROWS, 1).setFormulas(colP);  // Col P
-  sheet.getRange(2, 17, MAX_ROWS, 1).setFormulas(colQ);  // Col Q
+  // ── DROPDOWNS ───────────────────────────────────────────────────────────────
 
-  SpreadsheetApp.getActiveSpreadsheet().toast(
-    'Formulas restored in columns H, N, P, Q (rows 2–' + (MAX_ROWS + 1) + ')',
-    'Done', 4
+  // Col A: Race# (1–17)
+  const raceNums = Array.from({length: 17}, (_, i) => String(i + 1));
+  sheet.getRange(2, 1, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(raceNums, true).setAllowInvalid(false).build()
   );
+
+  // Col B: Series
+  sheet.getRange(2, 2, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(['1', '2', '3'], true).setAllowInvalid(false).build()
+  );
+
+  // Col C: RaceType
+  sheet.getRange(2, 3, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(['Fleet', 'Practice Fleet', 'Pursuit'], true).setAllowInvalid(false).build()
+  );
+
+  // Col D: Course
+  const courses = [
+    'ALPHA','BRAVO','CHARLIE','DELTA','ECHO',
+    'FOXTROT','GOLF','HOTEL','INDIA','JULIET',
+    'KILO','LIMA','MIKE','NOVEMBER','OSCAR',
+    'PAPA','QUEBEC'
+  ];
+  sheet.getRange(2, 4, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(courses, true).setAllowInvalid(false).build()
+  );
+
+  // Col E: BoatName (dynamic from Scratch Sheet col A, rows 2 onward)
+  const lastBoatRow = scratchSheet.getLastRow();
+  const boatRange = scratchSheet.getRange(2, 1, lastBoatRow - 1, 1);
+  sheet.getRange(2, 5, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInRange(boatRange, true).setAllowInvalid(false).build()
+  );
+
+  // Col M: Status
+  const statuses = ['DNC', 'DNF', 'RET', 'TLE', 'DSQ', 'DNE', 'OCS', 'BYE', 'NSC', 'ABN'];
+  sheet.getRange(2, 13, MAX_ROWS, 1).setDataValidation(
+    rule().requireValueInList(statuses, true).setAllowInvalid(false).build()
+  );
+
+  ss.toast('Formulas and dropdowns restored in Race Results Entry', 'Done', 4);
   Logger.log('restoreEntryFormulas complete.');
 }
 
